@@ -16,8 +16,8 @@
 #include "esp_timer.h"
 #include "img_converters.h"
 #include "Arduino.h"
-#include "soc/soc.h"           // Disable brownour problems
-#include "soc/rtc_cntl_reg.h"  // Disable brownour problems
+#include "soc/soc.h"           // Disable brownout problems
+#include "soc/rtc_cntl_reg.h"  // Disable brownout problems
 #include "driver/rtc_io.h"
 #include <ESPAsyncWebServer.h>
 #include <StringArray.h>
@@ -36,7 +36,7 @@ boolean takeNewPhoto = false;
 // Photo File Name to save in SPIFFS
 #define FILE_PHOTO_1 "/photo1.jpg"
 #define FILE_PHOTO_2 "/photo2.jpg"
-//#define FILE_PHOTO_3 "/photo3.jpg"
+#define FILE_PHOTO_3 "/photo3.jpg"
 
 // OV2640 camera module pins (CAMERA_MODEL_AI_THINKER)
 #define PWDN_GPIO_NUM     32
@@ -79,6 +79,7 @@ const char index_html[] PROGMEM = R"rawliteral(
   <div>
     <img src="saved-photo-1" id="photo1" width="70%">
     <img src="saved-photo-2" id="photo2" width="70%">
+    <img src="saved-photo-3" id="photo3" width="70%">
   </div>
 </body>
 <script>
@@ -97,7 +98,7 @@ void setup() {
 
   // Connect to Wi-Fi
   WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
+  while (WiFi.status() != WfL_CONNECTED) {
     delay(1000);
     Serial.println("Connecting to WiFi...");
   }
@@ -141,7 +142,7 @@ void setup() {
   config.pixel_format = PIXFORMAT_JPEG;
 
   if (psramFound()) {
-    config.frame_size = FRAMESIZE_UXGA;
+    config.frame_size = FRAMESIZE_XGA;
     config.jpeg_quality = 10;
     config.fb_count = 2;
   } else {
@@ -149,6 +150,7 @@ void setup() {
     config.jpeg_quality = 12;
     config.fb_count = 1;
   }
+  
   // Camera init
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK) {
@@ -174,6 +176,10 @@ void setup() {
     request->send(SPIFFS, FILE_PHOTO_2, "image/jpg", false);
   }); 
 
+  server.on("/saved-photo-3", HTTP_GET, [](AsyncWebServerRequest * request) {
+    request->send(SPIFFS, FILE_PHOTO_3, "image/jpg", false);
+  });
+  
   // Start server
   server.begin();
 
@@ -182,7 +188,10 @@ void setup() {
 void loop() {
   if (takeNewPhoto) {
     capturePhotoSaveSpiffs(FILE_PHOTO_1);
+    delay(500);
     capturePhotoSaveSpiffs(FILE_PHOTO_2);
+    delay(500);
+    capturePhotoSaveSpiffs(FILE_PHOTO_3);
     takeNewPhoto = false;
   }
   delay(1);
