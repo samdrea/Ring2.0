@@ -1,11 +1,10 @@
 /*********
-  Rui Santos
-  Complete project details at https://RandomNerdTutorials.com/esp32-cam-take-photo-display-web-server/
-  
-  IMPORTANT!!! 
-   - Select Board "AI Thinker ESP32-CAM"
-   - GPIO 0 must be connected to GND to upload a sketch
-   - After connecting GPIO 0 to GND, press the ESP32-CAM on-board RESET button to put your board in flashing mode
+  Ring 2.0
+  Samdrea Hsu
+
+  Adapted from:
+  Rui Santos's online tutorial. Project details at
+  https://RandomNerdTutorials.com/esp32-cam-take-photo-display-web-server/
   
   The above copyright notice and this permission notice shall be included in all
   copies or substantial portions of the Software.
@@ -28,10 +27,17 @@
 const char* ssid = "TP-Link_2G";
 const char* password = "overwhelm";
 
+// Sensor 
+int PIR_pin = 13;
+int LED_pin = 12;
+int PIR_state = 0;
+boolean motion = false;
+unsigned long motion_start;
+unsigned long motion_duration;
+const int MIN_MOTION = 3000; // Min time to confirm motion
+
 // Create AsyncWebServer object on port 80
 AsyncWebServer server(80);
-
-boolean takeNewPhoto = false;
 
 // Photo File Name to save in SPIFFS
 #define FILE_PHOTO_1 "/photo1.jpg"
@@ -72,7 +78,6 @@ const char index_html[] PROGMEM = R"rawliteral(
     <h2>ESP32-CAM Last Photo</h2>
     <p>It might take more than 5 seconds to capture a photo.</p>
     <p>
-      <button onclick="capturePhoto();">CAPTURE PHOTO</button>
       <button onclick="location.reload();">REFRESH PAGE</button>
     </p>
   </div>
@@ -82,23 +87,19 @@ const char index_html[] PROGMEM = R"rawliteral(
     <img src="saved-photo-3" id="photo3" width="70%">
   </div>
 </body>
-<script>
-  var deg = 0;
-  function capturePhoto() {
-    var xhr = new XMLHttpRequest();
-    xhr.open('GET', "/capture", true);
-    xhr.send();
-  }
-</script>
 </html>)rawliteral";
 
 void setup() {
   // Serial port for debugging purposes
   Serial.begin(115200);
 
+  // Sensor set-up
+  pinMode(PIR_pin, INPUT);
+  pinMode(LED_pin, OUTPUT);
+
   // Connect to Wi-Fi
   WiFi.begin(ssid, password);
-  while (WiFi.status() != WfL_CONNECTED) {
+  while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
     Serial.println("Connecting to WiFi...");
   }
@@ -144,7 +145,7 @@ void setup() {
   if (psramFound()) {
     config.frame_size = FRAMESIZE_XGA;
     config.jpeg_quality = 10;
-    config.fb_count = 2;
+    config.fb_count = 6;
   } else {
     config.frame_size = FRAMESIZE_SVGA;
     config.jpeg_quality = 12;
@@ -161,11 +162,6 @@ void setup() {
   // Route for root / web page
   server.on("/", HTTP_GET, [](AsyncWebServerRequest * request) {
     request->send_P(200, "text/html", index_html);
-  });
-
-  server.on("/capture", HTTP_GET, [](AsyncWebServerRequest * request) {
-    takeNewPhoto = true;
-    request->send_P(200, "text/plain", "Taking Photo");
   });
 
   server.on("/saved-photo-1", HTTP_GET, [](AsyncWebServerRequest * request) {
@@ -186,14 +182,42 @@ void setup() {
 }
 
 void loop() {
-  if (takeNewPhoto) {
-    capturePhotoSaveSpiffs(FILE_PHOTO_1);
-    delay(500);
-    capturePhotoSaveSpiffs(FILE_PHOTO_2);
-    delay(500);
-    capturePhotoSaveSpiffs(FILE_PHOTO_3);
-    takeNewPhoto = false;
+
+  PIR_state = digitalRead(PIR_pin);
+  
+  // Check if sensor detects motion
+  if (PIR_state && !motion) {
+    motion = true;
+    motion_start = millis();
   }
+
+  if (!PIR_state) {
+    motion = false;
+  }
+
+  if (motion){
+    motion_duration = abs(millis() - motion_start);
+
+    // Handle unsigned long overflow
+    if (motion_duration >= 4294967296 - MIN_MOTION - 10) {
+      motion_duration = 4294967296 - motion_start + millis();
+    }
+
+    // Confirm if motion is continuous
+    if (motion_duration >= MIN_MOTION) {
+      // Turn on LED and take three pictures
+      digitalWrite(LED_pin, HIGH);
+      capturePhotoSaveSpiffs(FILE_PHOTO_1);
+      delay(500);
+      capturePhotoSaveSpiffs(FILE_PHOTO_2);
+      delay(500);
+      capturePhotoSaveSpiffs(FILE_PHOTO_3);
+      motion = false;
+      delay(10000);
+      digitalWrite(LED_pin, LOW);
+    }
+  }
+  
   delay(1);
 }
 
