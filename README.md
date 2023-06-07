@@ -1,4 +1,4 @@
-# Ring2.0
+# Low-budget Ring Camera Alternative
 
 Author: Samdrea Hsu 
 
